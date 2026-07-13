@@ -101,6 +101,7 @@ jobs:
           $tag = "${{ github.ref_name }}"
           Write-Host "=== Creating release: $tag ==="
           gh release create "$tag" `
+            --repo readgo/yy_machine_build `
             --title "YYMachine $tag" `
             --notes "Windows portable release $tag." `
             "$env:ZIP_PATH"
