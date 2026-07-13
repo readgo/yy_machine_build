@@ -24,9 +24,14 @@ jobs:
       - name: Clone source from Gitee
         shell: pwsh
         env:
-          GIT_CLONE_URL: https://${{ secrets.GITEE_USERNAME }}:${{ secrets.GITEE_TOKEN }}@gitee.com/jing1984/yy_machine.git
+          GITEE_USER: ${{ secrets.GITEE_USERNAME }}
+          GITEE_PASS: ${{ secrets.GITEE_TOKEN }}
+          GITEE_BRANCH: main
         run: |
-          git clone --branch $env:GITEE_BRANCH $env:GIT_CLONE_URL .
+          $user = [System.Uri]::EscapeDataString($env:GITEE_USER)
+          $pass = [System.Uri]::EscapeDataString($env:GITEE_PASS)
+          $url = "https://${user}:${pass}@gitee.com/jing1984/yy_machine.git"
+          git clone --branch $env:GITEE_BRANCH $url .
 
       - name: Setup JDK 17
         uses: actions/setup-java@v4
