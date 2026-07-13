@@ -22,10 +22,11 @@ jobs:
 
     steps:
       - name: Clone source from Gitee
-        run: |
-          git clone --branch $env:GITEE_BRANCH `
-            https://${{ secrets.GITEE_USERNAME }}:${{ secrets.GITEE_TOKEN }}@$env:GITEE_REPO .
         shell: pwsh
+        env:
+          GIT_CLONE_URL: https://${{ secrets.GITEE_USERNAME }}:${{ secrets.GITEE_TOKEN }}@gitee.com/jing1984/yy_machine.git
+        run: |
+          git clone --branch $env:GITEE_BRANCH $env:GIT_CLONE_URL .
 
       - name: Setup JDK 17
         uses: actions/setup-java@v4
