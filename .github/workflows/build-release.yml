@@ -26,7 +26,7 @@ jobs:
         env:
           GITEE_USER: ${{ secrets.GITEE_USERNAME }}
           GITEE_PASS: ${{ secrets.GITEE_TOKEN }}
-          GITEE_BRANCH: main
+          GITEE_BRANCH: master
         run: |
           $user = [System.Uri]::EscapeDataString($env:GITEE_USER)
           $pass = [System.Uri]::EscapeDataString($env:GITEE_PASS)
