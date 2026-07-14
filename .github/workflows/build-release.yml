@@ -29,6 +29,17 @@ jobs:
           $url = "https://${user}:${pass}@gitee.com/jing1984/yy_machine.git"
           git clone --branch $env:GITEE_BRANCH $url .
 
+      - name: Clone app-langs (external language resources)
+        shell: pwsh
+        env:
+          GITEE_USER: ${{ secrets.GITEE_USERNAME }}
+          GITEE_PASS: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          $user = [System.Uri]::EscapeDataString($env:GITEE_USER)
+          $pass = [System.Uri]::EscapeDataString($env:GITEE_PASS)
+          $url = "https://${user}:${pass}@gitee.com/jing1984/app-langs.git"
+          git clone --branch master $url ../app-langs
+
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
@@ -57,7 +68,7 @@ jobs:
             Write-Host "Warning: scripts/ not found, skipping"
           }
 
-          # Copy app-langs if available (external project, not always present)
+          # Copy app-langs if available (external project)
           $langSource = "..\app-langs\printer"
           if (Test-Path $langSource) {
             Write-Host "Copying app-langs ..."
