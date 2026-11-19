@@ -11,7 +11,7 @@
     ↓
 GitHub Actions（windows-latest runner）
     ↓
-从 Gitee（main 分支）克隆源代码
+从 Gitee（master 分支）克隆源代码
     ↓
 JDK 17 + Gradle → Compose Desktop distribution
     ↓
@@ -20,7 +20,7 @@ ZIP 打包（便携版，免安装）
 gh release create → 上传 ZIP 到 GitHub Releases
 ```
 
-源代码托管在 Gitee: `https://gitee.com/jing1984/yy_machine.git`（`main` 分支）
+源代码托管在 Gitee: `https://gitee.com/jing1984/yy_machine.git`（`master` 分支）
 
 ---
 
@@ -29,10 +29,10 @@ gh release create → 上传 ZIP 到 GitHub Releases
 ### 方式一：打标签触发（推荐）
 
 ```bash
-# 使用脚本
-bash scripts/publish-release.sh
+# 使用脚本（在任意目录执行都可以，脚本会自己切到本仓库根）
+bash yy_machine_build/scripts/publish-release.sh
 
-# 或手动
+# 或手动（须在本仓库根目录内执行）
 git tag release-<年月日时分秒>
 git push origin release-<年月日时分秒>
 ```
