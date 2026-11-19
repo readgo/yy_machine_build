@@ -50,9 +50,27 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build Compose Desktop distribution
+      - name: Resolve app version
+        shell: pwsh
         run: |
-          .\gradlew.bat :apps:appPrinter:createDistributable -PbuildEnv=prod --no-daemon
+          # 版本号取 tag 的时间戳部分：release-20261119170942 -> 1.0.0-prod.20261119170942
+          # 手动触发（workflow_dispatch）没有 release tag 时退回当前时间
+          $ref = "${{ github.ref_name }}"
+          if ($ref -like 'release-*') {
+            $stamp = $ref.Substring(8)
+          } else {
+            $stamp = Get-Date -Format 'yyyyMMddHHmmss'
+          }
+          $appVersion = "1.0.0-prod.$stamp"
+          Write-Host "App version resolved: $appVersion (ref: $ref)"
+          echo "APP_VERSION=$appVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build Compose Desktop distribution
+        shell: pwsh
+        run: |
+          # 版本号通过 -Papp.version.name 覆盖 config/prod.properties，
+          # 打包后的 BuildConfig.APP_VERSION_NAME 与系统信息页显示的即为此值
+          .\gradlew.bat :apps:appPrinter:createDistributable -PbuildEnv=prod "-Papp.version.name=$env:APP_VERSION" --no-daemon
 
       - name: Package portable ZIP
         shell: pwsh
@@ -82,9 +100,8 @@ jobs:
             Write-Host "Warning: app-langs not found, skipping"
           }
 
-          # Create ZIP with timestamp
-          $timestamp = Get-Date -Format 'yyyyMMddHHmmss'
-          $zipName = "YYMachinePrinter_$timestamp.zip"
+          # Create ZIP named with the app version (e.g. YYMachinePrinter_1.0.0-prod.20261119170942.zip)
+          $zipName = "YYMachinePrinter_$env:APP_VERSION.zip"
           $zipPath = "$appDir\$zipName"
           Write-Host "Creating ZIP: $zipName"
           Compress-Archive -Path "$appDir\*" -DestinationPath $zipPath -Force
@@ -106,11 +123,11 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
-          Write-Host "=== Creating release: $tag ==="
+          Write-Host "=== Creating release: $tag (app version: $env:APP_VERSION) ==="
           gh release create "$tag" `
             --repo readgo/yy_machine_build `
             --title "YYMachine $tag" `
-            --notes "Windows portable release $tag." `
+            --notes "Windows portable release $tag.`nApp version: $env:APP_VERSION" `
             "$env:ZIP_PATH"
         env:
           GH_TOKEN: ${{ github.token }}
