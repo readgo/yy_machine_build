@@ -68,7 +68,26 @@ https://github.com/readgo/yy_machine_build/actions
 https://github.com/readgo/yy_machine_build/releases
 ```
 
-产物为 ZIP 文件：`YYMachinePrinter_<时间戳>.zip`
+产物为 ZIP 文件，命名与 yy-light 统一：
+
+```
+yy-printer-windows-<架构>-v<版本>.zip
+例：yy-printer-windows-x86_64-v1.0.0.zip
+```
+
+### 版本号怎么走
+
+| 环节 | 行为 |
+|---|---|
+| 版本来源 | 源码 `apps/appPrinter/config/prod.properties` 的 `app.version.name`，唯一一处 |
+| 构建 | 直接用它拼产物名，不带时间戳 |
+| 构建成功 | 最后一步把 patch + 1（`1.0.0` → `1.0.1`）写回源码仓并推送到 `master` |
+| 构建失败 | 不写回，版本号不消耗，下次仍用同一个号 |
+
+- 架构取 CI runner 的 `RUNNER_ARCH`（`X64` → `x86_64`）
+- tag 仍是 `release-<年月日时分秒>`，只作构建触发与批次标识，不参与版本号
+- **写回依赖 `GITEE_TOKEN` 有 `yy_machine` 的写权限**；若只有读权限，这步会标红失败
+- 本地改完 `prod.properties` 后推送前需先 `git pull`，否则会被 CI 的版本提交挡住
 
 ---
 

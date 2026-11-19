@@ -9,6 +9,11 @@ on:
 permissions:
   contents: write
 
+# 版本号会被写回源码仓，两次构建并行会抢同一行，串行化
+concurrency:
+  group: release-build
+  cancel-in-progress: false
+
 env:
   GITEE_BRANCH: master
 
@@ -53,17 +58,31 @@ jobs:
       - name: Resolve app version
         shell: pwsh
         run: |
-          # 版本号取 tag 的时间戳部分：release-20261119170942 -> 1.0.0-prod.20261119170942
-          # 手动触发（workflow_dispatch）没有 release tag 时退回当前时间
+          # 版本号唯一来源：源码 config/prod.properties 的 app.version.name，不带时间戳
+          #   1.0.0 -> 产物 yy-printer-windows-x86_64-v1.0.0.zip
+          # 构建成功后由最后的 Bump version 步骤把它 patch+1 写回源码仓，供下次构建使用
           $ref = "${{ github.ref_name }}"
-          if ($ref -like 'release-*') {
-            $stamp = $ref.Substring(8)
-          } else {
-            $stamp = Get-Date -Format 'yyyyMMddHHmmss'
+          $propsPath = "apps\appPrinter\config\prod.properties"
+          $raw = [System.IO.File]::ReadAllText((Resolve-Path $propsPath))
+          $m = [regex]::Match($raw, '(?m)^[ \t]*app\.version\.name[ \t]*=[ \t]*(\S+)')
+          if (-not $m.Success) {
+            throw "app.version.name not found in $propsPath"
           }
-          $appVersion = "1.0.0-prod.$stamp"
-          Write-Host "App version resolved: $appVersion (ref: $ref)"
+          $appVersion = $m.Groups[1].Value.Trim()
+
+          # 产物命名与 yy-light 统一：yy-light-windows-x86_64-v1.0.64.zip
+          $arch = switch ($env:RUNNER_ARCH) {
+            'X64'   { 'x86_64' }
+            'ARM64' { 'aarch64' }
+            default { 'x86_64' }
+          }
+          $zipName = "yy-printer-windows-$arch-v$appVersion.zip"
+
+          Write-Host "App version resolved: $appVersion (from $propsPath, ref: $ref)"
+          Write-Host "Artifact name: $zipName"
           echo "APP_VERSION=$appVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "ARCH=$arch" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "ZIP_NAME=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Build Compose Desktop distribution
         shell: pwsh
@@ -100,15 +119,14 @@ jobs:
             Write-Host "Warning: app-langs not found, skipping"
           }
 
-          # Create ZIP named with the app version (e.g. YYMachinePrinter_1.0.0-prod.20261119170942.zip)
-          $zipName = "YYMachinePrinter_$env:APP_VERSION.zip"
+          # ZIP 名在 Resolve app version 步骤已确定（yy-printer-windows-<arch>-v<version>.zip）
+          $zipName = $env:ZIP_NAME
           $zipPath = "$appDir\$zipName"
           Write-Host "Creating ZIP: $zipName"
           Compress-Archive -Path "$appDir\*" -DestinationPath $zipPath -Force
 
           # Set env for later steps
           echo "ZIP_PATH=$zipPath" | Out-File -FilePath $env:GITHUB_ENV -Append
-          echo "ZIP_NAME=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append
           Write-Host "=== ZIP created: $zipPath ==="
 
       - name: List output contents
@@ -126,17 +144,63 @@ jobs:
           Write-Host "=== Creating release: $tag (app version: $env:APP_VERSION) ==="
           gh release create "$tag" `
             --repo readgo/yy_machine_build `
-            --title "YYMachine $tag" `
-            --notes "Windows portable release $tag.`nApp version: $env:APP_VERSION" `
+            --title "yy-printer v$env:APP_VERSION" `
+            --notes "Windows $env:ARCH portable release.`nApp version: $env:APP_VERSION`nBuild tag: $tag" `
             "$env:ZIP_PATH"
         env:
           GH_TOKEN: ${{ github.token }}
+
+      # 只有走到这一步（Release 已建好）才消耗版本号：patch+1 写回源码仓，供下次构建使用
+      - name: Bump version in source repo
+        shell: pwsh
+        env:
+          GITEE_USER: ${{ secrets.GITEE_USERNAME }}
+          GITEE_PASS: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          # 让 git 的非零退出码由 $LASTEXITCODE 判断，而不是直接抛异常中断重试
+          $PSNativeCommandUseErrorActionPreference = $false
+          $propsPath = "apps\appPrinter\config\prod.properties"
+          $current = $env:APP_VERSION
+          $parts = $current.Split('.')
+          if ($parts.Count -ne 3) {
+            throw "Version '$current' is not MAJOR.MINOR.PATCH, cannot bump"
+          }
+          $next = "{0}.{1}.{2}" -f $parts[0], $parts[1], ([int]$parts[2] + 1)
+
+          # 只替换这一行，保留原文件编码（无 BOM）与行尾
+          $content = [System.IO.File]::ReadAllText((Resolve-Path $propsPath))
+          $updated = [regex]::Replace($content, '(?m)^[ \t]*app\.version\.name[ \t]*=[^\r\n]*', "app.version.name=$next")
+          if ($updated -eq $content) {
+            throw "Failed to rewrite app.version.name in $propsPath"
+          }
+          [System.IO.File]::WriteAllText((Resolve-Path $propsPath), $updated, (New-Object System.Text.UTF8Encoding($false)))
+
+          git config user.name  "yy-machine-ci"
+          git config user.email "ci@yyvendor.com"
+          git add $propsPath
+          git commit -m "chore: bump app version to $next (released $current, tag ${{ github.ref_name }})"
+
+          $pushed = $false
+          for ($i = 1; $i -le 3; $i++) {
+            git pull --rebase origin $env:GITEE_BRANCH
+            if ($LASTEXITCODE -ne 0) { git rebase --abort 2>$null }
+            git push origin "HEAD:$env:GITEE_BRANCH"
+            if ($LASTEXITCODE -eq 0) { $pushed = $true; break }
+            Write-Host "push failed (attempt $i), retrying in 5s ..."
+            Start-Sleep -Seconds 5
+          }
+          if (-not $pushed) {
+            # 写不回去就标红：否则下次构建还会用同一个版本号，产出同名资产
+            throw "Version bump committed locally but push to $env:GITEE_BRANCH failed after 3 attempts. Current version '$current' will be reused by the next build unless fixed."
+          }
+          Write-Host "Version bumped: $current -> $next (pushed to $env:GITEE_BRANCH)"
 
       - name: Build Summary
         run: |
           Write-Host "=========================================="
           Write-Host "  Build & Release Complete!"
           Write-Host "  Tag: ${{ github.ref_name }}"
+          Write-Host "  App version: $env:APP_VERSION"
           Write-Host "  Asset: $env:ZIP_NAME"
           Write-Host "  Repo: readgo/yy_machine_build"
           Write-Host "=========================================="
