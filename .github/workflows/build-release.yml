@@ -119,6 +119,16 @@ jobs:
             Write-Host "Warning: app-langs not found, skipping"
           }
 
+          # 写 run.conf 到包根：一行可执行文件名，外部启动器据此决定启动哪个程序
+          #   取 appDir 下唯一的 exe（排除卸载器 unins*），改名也不用同步维护
+          $exes = @(Get-ChildItem -Path $appDir -Filter *.exe -File | Where-Object { $_.Name -notlike 'unins*' })
+          if ($exes.Count -ne 1) {
+            throw "Expected exactly 1 launcher exe in $appDir, found $($exes.Count): $($exes.Name -join ', ')"
+          }
+          $runConfPath = Join-Path $appDir "run.conf"
+          [System.IO.File]::WriteAllText($runConfPath, $exes[0].Name + "`r`n", (New-Object System.Text.UTF8Encoding($false)))
+          Write-Host "run.conf written: $($exes[0].Name)"
+
           # ZIP 名在 Resolve app version 步骤已确定（yy-printer-windows-<arch>-v<version>.zip）
           $zipName = $env:ZIP_NAME
           $zipPath = "$appDir\$zipName"
@@ -136,6 +146,8 @@ jobs:
           Get-Item "$env:ZIP_PATH" | Select-Object Name, Length
           Write-Host "=== Output directory ==="
           Get-ChildItem "apps\appPrinter\build\compose\binaries\main\app\YYMachinePrinter" -Include *.zip | Select-Object Name, Length
+          Write-Host "=== run.conf ==="
+          Get-Content "apps\appPrinter\build\compose\binaries\main\app\YYMachinePrinter\run.conf" -Raw
 
       - name: Create GitHub Release
         shell: pwsh

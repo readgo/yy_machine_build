@@ -75,6 +75,14 @@ yy-printer-windows-<架构>-v<版本>.zip
 例：yy-printer-windows-x86_64-v1.0.0.zip
 ```
 
+ZIP 根目录除程序本体外，打包含：
+
+| 文件/目录 | 来源 | 说明 |
+|---|---|---|
+| `run.conf` | CI 生成 | 一行主程序文件名（`YYMachinePrinter.exe`），供外部启动器读取该拉起哪个程序；CI 从产物目录里自动取唯一的 exe，改名无需同步改 workflow |
+| `scripts/` | 源码 `scripts/` | 打印脚本等外部程序 |
+| `lang/` | 外部仓 `app-langs/printer` | 语言包 XML + `languages.json` |
+
 ### 版本号怎么走
 
 | 环节 | 行为 |
